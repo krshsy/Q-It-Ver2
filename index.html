@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pickleball Open Play Queue</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Q-It | Pickleball Open Play Manager</p>
+        <label class="session-name-label">
+          Session name
+          <input id="sessionName" type="text" value="Pickleball Queue" />
+        </label>
+      </div>
+      <div class="header-actions">
+        <button id="generateStandingsBtn" class="ghost-button" type="button">Generate Standings/Leaderboard</button>
+        <button id="clearAllBtn" class="danger-button" type="button">Clear Session</button>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <section class="control-panel" aria-labelledby="add-player-title">
+        <div class="section-title">
+          <h2 id="add-player-title">Check In</h2>
+          <span id="playerCount" class="pill">0 players</span>
+        </div>
+
+        <form id="playerForm" class="player-form">
+          <label>
+            Player names
+            <textarea id="playerName" name="playerName" rows="5" autocomplete="off" placeholder="One name per line, or comma separated" required></textarea>
+          </label>
+
+          <label>
+            Level
+            <select id="playerLevel" name="playerLevel">
+              <option value="Beginner">Beginner</option>
+              <option value="Intermediate" selected>Intermediate</option>
+              <option value="Advanced">Advanced</option>
+            </select>
+          </label>
+
+          <label>
+            Party
+            <select id="partySize" name="partySize">
+              <option value="1" selected>Solo</option>
+              <option value="2">Pair</option>
+              <option value="3">Group of 3</option>
+              <option value="4">Four-stack</option>
+            </select>
+          </label>
+
+          <button class="primary-button" type="submit">Add To Queue</button>
+        </form>
+
+        <div class="settings-grid" aria-label="Queue settings">
+          <label>
+            Courts
+            <input id="courtCount" type="number" min="1" max="12" value="4" />
+          </label>
+          <label class="toggle-row">
+            <input id="preferSkill" type="checkbox" checked />
+            Match similar levels
+          </label>
+        </div>
+
+        <div class="quick-actions">
+          <button id="assignNextBtn" class="primary-button" type="button">Assign Next Court</button>
+          <button id="autoFillBtn" class="ghost-button" type="button">Fill Open Courts</button>
+        </div>
+
+        <form id="customMatchForm" class="custom-match-form" aria-label="Custom matchup">
+          <div class="section-title">
+            <h2>Custom Stack</h2>
+            <span class="muted">Pick exact teams</span>
+          </div>
+
+          <label>
+            Court
+            <select id="customCourt"></select>
+          </label>
+
+          <div class="team-picker">
+            <label>
+              Team A 1
+              <select id="teamA1"></select>
+            </label>
+            <label>
+              Team A 2
+              <select id="teamA2"></select>
+            </label>
+            <label>
+              Team B 1
+              <select id="teamB1"></select>
+            </label>
+            <label>
+              Team B 2
+              <select id="teamB2"></select>
+            </label>
+          </div>
+
+          <button id="assignCustomBtn" class="primary-button" type="submit">Assign Custom Match</button>
+        </form>
+
+        <section class="status-strip compact-metrics" aria-label="Session summary">
+          <div>
+            <span id="waitingMetric">0</span>
+            <small>Waiting</small>
+          </div>
+          <div>
+            <span id="playingMetric">0</span>
+            <small>Playing</small>
+          </div>
+          <div>
+            <span id="openCourtMetric">0</span>
+            <small>Open Courts</small>
+          </div>
+          <div>
+            <span id="gamesMetric">0</span>
+            <small>Games Run</small>
+          </div>
+        </section>
+
+        <section class="panel-mini" aria-labelledby="match-log-title">
+          <div class="section-title">
+            <h2 id="match-log-title">Match Log</h2>
+            <span class="muted">Most recent first</span>
+          </div>
+          <div id="matchLog" class="match-log"></div>
+        </section>
+
+        <section class="panel-mini" aria-labelledby="sitout-title">
+          <div class="section-title">
+            <h2 id="sitout-title">Sitting Out</h2>
+            <span class="muted">Check back in when ready</span>
+          </div>
+          <div id="sitoutList" class="queue-list" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section class="board-grid">
+        <div class="board-column courts-column">
+          <div class="section-title">
+            <h2>Courts</h2>
+            <span id="courtHint" class="muted">Live court timers</span>
+          </div>
+          <div id="courtsGrid" class="courts-grid"></div>
+        </div>
+
+        <div class="board-column queue-column">
+          <div class="section-title">
+            <h2>Waiting Queue</h2>
+            <span id="queueHint" class="muted">First in, first up</span>
+          </div>
+          <div id="queueList" class="queue-list" aria-live="polite"></div>
+        </div>
+
+        <div class="board-column leaderboard-column">
+          <div class="section-title">
+            <h2>Leaderboard</h2>
+            <span class="muted">Win rate and opponent strength</span>
+          </div>
+          <div id="leaderboard" class="leaderboard"></div>
+        </div>
+
+        <div class="board-column standings-column">
+          <div class="section-title">
+            <h2>Generated Standings</h2>
+            <span id="standingsHint" class="muted">Create at session end</span>
+          </div>
+          <div id="standingsBoard" class="leaderboard"></div>
+        </div>
+
+      </section>
+    </main>
+
+    <template id="playerTemplate">
+      <article class="player-card">
+        <div>
+          <strong class="player-name"></strong>
+          <span class="player-meta"></span>
+        </div>
+        <div class="card-actions">
+          <button class="icon-button move-up" type="button" title="Move up" aria-label="Move up">Up</button>
+          <button class="icon-button move-down" type="button" title="Move down" aria-label="Move down">Down</button>
+          <button class="icon-button sit-out-player" type="button" title="Sit out" aria-label="Sit out">Sit</button>
+          <button class="icon-button remove-player" type="button" title="Remove" aria-label="Remove">X</button>
+        </div>
+      </article>
+    </template>
+
+    <template id="courtTemplate">
+      <article class="court-card">
+        <div class="court-topline">
+          <h3></h3>
+          <span class="court-state"></span>
+        </div>
+        <div class="court-body"></div>
+        <div class="court-actions"></div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
