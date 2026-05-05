@@ -72,6 +72,25 @@
           <button id="autoFillBtn" class="ghost-button" type="button">Fill Open Courts</button>
         </div>
 
+        <section class="status-strip compact-metrics" aria-label="Session summary">
+          <div>
+            <span id="waitingMetric">0</span>
+            <small>Waiting</small>
+          </div>
+          <div>
+            <span id="playingMetric">0</span>
+            <small>Playing</small>
+          </div>
+          <div>
+            <span id="openCourtMetric">0</span>
+            <small>Open Courts</small>
+          </div>
+          <div>
+            <span id="gamesMetric">0</span>
+            <small>Games Run</small>
+          </div>
+        </section>
+
         <form id="customMatchForm" class="custom-match-form" aria-label="Custom matchup">
           <div class="section-title">
             <h2>Custom Stack</h2>
@@ -105,23 +124,12 @@
           <button id="assignCustomBtn" class="primary-button" type="submit">Assign Custom Match</button>
         </form>
 
-        <section class="status-strip compact-metrics" aria-label="Session summary">
-          <div>
-            <span id="waitingMetric">0</span>
-            <small>Waiting</small>
+        <section class="panel-mini" aria-labelledby="leaderboard-title">
+          <div class="section-title">
+            <h2 id="leaderboard-title">Leaderboard</h2>
+            <span class="muted">Win rate and opponent strength</span>
           </div>
-          <div>
-            <span id="playingMetric">0</span>
-            <small>Playing</small>
-          </div>
-          <div>
-            <span id="openCourtMetric">0</span>
-            <small>Open Courts</small>
-          </div>
-          <div>
-            <span id="gamesMetric">0</span>
-            <small>Games Run</small>
-          </div>
+          <div id="leaderboard" class="leaderboard compact-leaderboard"></div>
         </section>
 
         <section class="panel-mini" aria-labelledby="match-log-title">
@@ -148,6 +156,13 @@
             <span id="courtHint" class="muted">Live court timers</span>
           </div>
           <div id="courtsGrid" class="courts-grid"></div>
+          <section class="up-next-section" aria-labelledby="up-next-title">
+            <div class="section-title">
+              <h2 id="up-next-title">Up Next</h2>
+              <span class="muted">Next two stacks</span>
+            </div>
+            <div id="upNextList" class="up-next-list"></div>
+          </section>
         </div>
 
         <div class="board-column queue-column">
@@ -156,14 +171,6 @@
             <span id="queueHint" class="muted">First in, first up</span>
           </div>
           <div id="queueList" class="queue-list" aria-live="polite"></div>
-        </div>
-
-        <div class="board-column leaderboard-column">
-          <div class="section-title">
-            <h2>Leaderboard</h2>
-            <span class="muted">Win rate and opponent strength</span>
-          </div>
-          <div id="leaderboard" class="leaderboard"></div>
         </div>
 
         <div class="board-column standings-column">

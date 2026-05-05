@@ -128,7 +128,7 @@ h3 {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(260px, 340px) 1fr;
+  grid-template-columns: minmax(320px, 30fr) 70fr;
   align-items: start;
   gap: 14px;
   padding: 0 clamp(16px, 3vw, 40px) 28px;
@@ -519,6 +519,14 @@ select:focus {
   overflow-x: auto;
 }
 
+.compact-leaderboard .leader-row {
+  grid-template-columns: minmax(110px, 1fr) repeat(4, minmax(46px, 0.5fr));
+  gap: 6px;
+  min-width: 0;
+  padding: 7px 8px;
+  font-size: 0.76rem;
+}
+
 .leader-row {
   display: grid;
   grid-template-columns: minmax(120px, 1.4fr) repeat(4, minmax(72px, 0.7fr));
@@ -580,6 +588,45 @@ select:focus {
   padding: 6px 8px;
 }
 
+.up-next-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.up-next-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.up-next-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 9px 10px;
+}
+
+.up-next-card strong {
+  color: var(--court-dark);
+  font-size: 0.78rem;
+}
+
+.up-next-card span {
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.compact-empty {
+  min-height: 74px;
+}
+
 @media (min-width: 981px) and (max-width: 1180px) {
   .app-header {
     gap: 14px;
@@ -591,7 +638,7 @@ select:focus {
   }
 
   .app-shell {
-    grid-template-columns: minmax(250px, 300px) 1fr;
+    grid-template-columns: minmax(300px, 32fr) 68fr;
     gap: 12px;
   }
 
@@ -655,6 +702,10 @@ select:focus {
   }
 
   .courts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .up-next-list {
     grid-template-columns: 1fr;
   }
 }

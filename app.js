@@ -34,6 +34,7 @@ const els = {
   queueList: document.querySelector("#queueList"),
   sitoutList: document.querySelector("#sitoutList"),
   courtsGrid: document.querySelector("#courtsGrid"),
+  upNextList: document.querySelector("#upNextList"),
   courtHint: document.querySelector("#courtHint"),
   queueHint: document.querySelector("#queueHint"),
   playerCount: document.querySelector("#playerCount"),
@@ -218,17 +219,21 @@ function movePlayer(playerId, direction) {
 }
 
 function selectNextFour() {
-  if (state.players.length < 4) return [];
+  return selectNextFourFrom(state.players);
+}
 
-  const candidatePool = state.players.slice(0, Math.min(24, state.players.length));
+function selectNextFourFrom(players) {
+  if (players.length < 4) return [];
+
+  const candidatePool = players.slice(0, Math.min(24, players.length));
   let bestGroup = candidatePool.slice(0, 4);
   let bestScore = Infinity;
 
   combinations(candidatePool, 4).forEach((group) => {
     const ranks = group.map((player) => levelRank[player.level] || 2);
     const spread = Math.max(...ranks) - Math.min(...ranks);
-    const oldestIndexPenalty = group.reduce((sum, player) => sum + state.players.indexOf(player), 0) / 20;
-    const partyPenalty = splitPartyPenalty(group);
+    const oldestIndexPenalty = group.reduce((sum, player) => sum + players.findIndex((item) => item.id === player.id), 0) / 20;
+    const partyPenalty = splitPartyPenalty(group, players);
     const streakPenalty = sharedStreakPenalty(group);
     const waitBonus = longWaitBonus(group);
     const score = streakPenalty + (state.settings.preferSkill ? spread * 5 : 0) + oldestIndexPenalty + partyPenalty - waitBonus;
@@ -241,14 +246,14 @@ function selectNextFour() {
   return bestGroup;
 }
 
-function splitPartyPenalty(group) {
+function splitPartyPenalty(group, queue = state.players) {
   const partyCounts = {};
   group.forEach((player) => {
     if (player.partyId) partyCounts[player.partyId] = (partyCounts[player.partyId] || 0) + 1;
   });
 
   return Object.entries(partyCounts).reduce((penalty, [partyId, selectedCount]) => {
-    const waitingCount = state.players.filter((player) => player.partyId === partyId).length;
+    const waitingCount = queue.filter((player) => player.partyId === partyId).length;
     return selectedCount > 0 && selectedCount < waitingCount ? penalty + 2000 : penalty;
   }, 0);
 }
@@ -580,6 +585,7 @@ function render() {
   renderQueue();
   renderSitouts();
   renderCourts();
+  renderUpNext();
   renderCustomMatchOptions();
   renderLeaderboard();
   renderStandings();
@@ -662,6 +668,7 @@ function renderQueue() {
       render();
     });
     node.querySelector(".remove-player").addEventListener("click", () => {
+      if (!confirm(`Remove ${player.name} from the queue?`)) return;
       removePlayer(player.id);
       render();
     });
@@ -726,6 +733,48 @@ function renderCourts() {
 
     els.courtsGrid.append(node);
   });
+}
+
+function renderUpNext() {
+  els.upNextList.replaceChildren();
+
+  const previewQueue = state.players.map((player) => ({ ...player }));
+  const previews = [];
+
+  for (let index = 0; index < 2; index += 1) {
+    const selected = selectNextFourFrom(previewQueue);
+    if (selected.length < 4) break;
+    const selectedIds = new Set(selected.map((player) => player.id));
+    const teams = buildTeams(selected);
+    previews.push(teams);
+    for (let queueIndex = previewQueue.length - 1; queueIndex >= 0; queueIndex -= 1) {
+      if (selectedIds.has(previewQueue[queueIndex].id)) previewQueue.splice(queueIndex, 1);
+    }
+  }
+
+  if (previews.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state compact-empty";
+    empty.textContent = "Add at least four waiting players.";
+    els.upNextList.append(empty);
+    return;
+  }
+
+  previews.forEach((teams, index) => {
+    const card = document.createElement("article");
+    card.className = "up-next-card";
+    card.innerHTML = `
+      <strong></strong>
+      <span></span>
+    `;
+    card.querySelector("strong").textContent = `Stack ${index + 1}`;
+    card.querySelector("span").textContent = `${teamLabel(teams.teamA)} vs ${teamLabel(teams.teamB)}`;
+    els.upNextList.append(card);
+  });
+}
+
+function teamLabel(team) {
+  return team.map((player) => player.name).join(" / ");
 }
 
 function renderOpenCourt(node, court) {
@@ -806,15 +855,6 @@ function renderActiveCourt(node, court) {
     render();
   });
 
-  const winnersBtn = document.createElement("button");
-  winnersBtn.className = "ghost-button";
-  winnersBtn.type = "button";
-  winnersBtn.textContent = "Winners First";
-  winnersBtn.addEventListener("click", () => {
-    finishGame(court.id, true);
-    render();
-  });
-
   const clearBtn = document.createElement("button");
   clearBtn.className = "danger-button";
   clearBtn.type = "button";
@@ -825,7 +865,7 @@ function renderActiveCourt(node, court) {
     render();
   });
 
-  actions.append(finishBtn, winnersBtn, clearBtn);
+  actions.append(finishBtn, clearBtn);
 }
 
 function teamRow(left, middle, right) {
