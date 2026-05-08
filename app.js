@@ -3,6 +3,7 @@ const STORAGE_KEY = "pickleball-openplay-manager-v1";
 const state = {
   players: [],
   sitouts: [],
+  removedPlayers: [],
   courts: [],
   settings: {
     courtCount: 4,
@@ -33,6 +34,7 @@ const els = {
   preferSkill: document.querySelector("#preferSkill"),
   queueList: document.querySelector("#queueList"),
   sitoutList: document.querySelector("#sitoutList"),
+  removedList: document.querySelector("#removedList"),
   courtsGrid: document.querySelector("#courtsGrid"),
   upNextList: document.querySelector("#upNextList"),
   courtHint: document.querySelector("#courtHint"),
@@ -61,8 +63,6 @@ const levelRank = {
 };
 
 const courtColors = ["#c8f1df", "#cfe0ff", "#f4d5ea", "#ffe1b8", "#dedcff", "#c9eef3", "#ffd1cd", "#dceec4"];
-const MAX_NON_PARTY_SHARED_STREAK = 1;
-
 function uid() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -78,6 +78,7 @@ function loadState() {
     const parsed = JSON.parse(stored);
     state.players = Array.isArray(parsed.players) ? parsed.players : [];
     state.sitouts = Array.isArray(parsed.sitouts) ? parsed.sitouts : [];
+    state.removedPlayers = Array.isArray(parsed.removedPlayers) ? parsed.removedPlayers : [];
     state.courts = Array.isArray(parsed.courts) ? parsed.courts : [];
     state.settings = { ...state.settings, ...(parsed.settings || {}) };
     state.stats = parsed.stats || {};
@@ -91,10 +92,19 @@ function loadState() {
   }
 
   syncCourts();
+  migratePlayerTimestamps();
 }
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function migratePlayerTimestamps() {
+  allSessionPlayers().forEach((player) => {
+    const joinedAt = player.sessionJoinedAt || player.checkedInAt || Date.now();
+    player.sessionJoinedAt = joinedAt;
+    player.checkedInAt = player.checkedInAt || joinedAt;
+  });
 }
 
 function syncCourts() {
@@ -131,6 +141,7 @@ function addPlayer(name, level, partySize) {
   const partyId = Number(partySize) > 1 ? uid() : null;
   const count = clamp(Number(partySize), 1, 4);
   const partyLabel = count > 1 ? `party of ${count}` : "";
+  const joinedAt = Date.now();
 
   for (let index = 0; index < count; index += 1) {
     state.players.push({
@@ -140,7 +151,8 @@ function addPlayer(name, level, partySize) {
       partyId,
       partySize: count,
       partyLabel,
-      checkedInAt: Date.now()
+      checkedInAt: joinedAt,
+      sessionJoinedAt: joinedAt
     });
   }
 }
@@ -148,6 +160,7 @@ function addPlayer(name, level, partySize) {
 function addNamedParty(names, level) {
   const partyId = uid();
   const partySize = names.length;
+  const joinedAt = Date.now();
   names.forEach((name) => {
     state.players.push({
       id: uid(),
@@ -156,7 +169,8 @@ function addNamedParty(names, level) {
       partyId,
       partySize,
       partyLabel: `party of ${partySize}`,
-      checkedInAt: Date.now()
+      checkedInAt: joinedAt,
+      sessionJoinedAt: joinedAt
     });
   });
 }
@@ -190,7 +204,10 @@ function addPlayersFromInput(value, level, partySize) {
 }
 
 function removePlayer(playerId) {
-  state.players = state.players.filter((player) => player.id !== playerId);
+  const index = state.players.findIndex((player) => player.id === playerId);
+  if (index < 0) return;
+  const [player] = state.players.splice(index, 1);
+  markEarlyOut(player);
 }
 
 function sitOutPlayer(playerId) {
@@ -204,11 +221,19 @@ function checkInPlayer(playerId) {
   const index = state.sitouts.findIndex((player) => player.id === playerId);
   if (index < 0) return;
   const [player] = state.sitouts.splice(index, 1);
-  state.players.push({ ...player, checkedInAt: Date.now() });
+  state.players.push({ ...player, checkedInAt: Date.now(), sessionJoinedAt: player.sessionJoinedAt || player.checkedInAt || Date.now() });
 }
 
 function removeSitout(playerId) {
-  state.sitouts = state.sitouts.filter((player) => player.id !== playerId);
+  const index = state.sitouts.findIndex((player) => player.id === playerId);
+  if (index < 0) return;
+  const [player] = state.sitouts.splice(index, 1);
+  markEarlyOut(player);
+}
+
+function markEarlyOut(player) {
+  state.removedPlayers = state.removedPlayers.filter((removed) => removed.id !== player.id);
+  state.removedPlayers.push({ ...player, earlyOutAt: Date.now() });
 }
 
 function ungroupParty(partyId) {
@@ -288,7 +313,8 @@ function sharedStreakPenalty(group) {
   return pairCombinations(group).reduce((sum, pair) => {
     if (sameParty(pair[0], pair[1])) return sum;
     const streak = sharedStreak(pair[0], pair[1]);
-    return sum + (streak >= MAX_NON_PARTY_SHARED_STREAK ? 2500 : streak * 80);
+    const limit = sharedStreakLimit();
+    return sum + (streak >= limit ? 2500 : streak * 80);
   }, 0);
 }
 
@@ -334,7 +360,7 @@ function assignNextCourt(targetCourtId = null) {
   return true;
 }
 
-function assignCustomMatch(courtId, teamAIds, teamBIds) {
+function assignCustomMatch(courtId, teamAIds, teamBIds, options = {}) {
   const openCourt = state.courts.find((court) => court.id === courtId && !court.game);
   const selectedIds = [...teamAIds, ...teamBIds];
   const uniqueIds = new Set(selectedIds);
@@ -343,13 +369,13 @@ function assignCustomMatch(courtId, teamAIds, teamBIds) {
   const playersById = new Map(state.players.map((player) => [player.id, player]));
   const selected = selectedIds.map((id) => playersById.get(id));
   if (selected.some((player) => !player)) return false;
-  if (wouldExceedSharedStreakLimit(selected)) return false;
-  if (splitsLockedParty(selected)) return false;
+  if (!options.force && wouldExceedSharedStreakLimit(selected)) return false;
+  if (!options.force && splitsLockedParty(selected)) return false;
 
   const teamA = teamAIds.map((id) => playersById.get(id));
   const teamB = teamBIds.map((id) => playersById.get(id));
-  if (!isValidLevelMatchup(teamA, teamB)) return false;
-  if (splitsLockedPairAcrossTeams(teamA, teamB)) return false;
+  if (!options.force && !isValidLevelMatchup(teamA, teamB)) return false;
+  if (!options.force && splitsLockedPairAcrossTeams(teamA, teamB)) return false;
   state.players = state.players.filter((player) => !uniqueIds.has(player.id));
   openCourt.game = {
     id: uid(),
@@ -362,6 +388,58 @@ function assignCustomMatch(courtId, teamAIds, teamBIds) {
     custom: true
   };
   return true;
+}
+
+function customStackWarnings(courtId, teamAIds, teamBIds) {
+  const openCourt = state.courts.find((court) => court.id === courtId && !court.game);
+  const selectedIds = [...teamAIds, ...teamBIds];
+  const uniqueIds = new Set(selectedIds);
+  const playersById = new Map(state.players.map((player) => [player.id, player]));
+  const selected = selectedIds.map((id) => playersById.get(id));
+
+  if (!openCourt) return { canAssign: false, warnings: ["Choose an open court first."] };
+  if (selectedIds.length !== 4 || selectedIds.some((id) => !id)) return { canAssign: false, warnings: ["Choose four players first."] };
+  if (uniqueIds.size !== 4) return { canAssign: false, warnings: ["Each player can only appear once in a stack."] };
+  if (selected.some((player) => !player)) return { canAssign: false, warnings: ["One selected player is no longer in the waiting queue."] };
+
+  const teamA = teamAIds.map((id) => playersById.get(id));
+  const teamB = teamBIds.map((id) => playersById.get(id));
+  const warnings = [];
+  if (wouldExceedSharedStreakLimit(selected)) warnings.push(`Some players have already shared a stack ${sharedStreakLimit()} time(s) in a row.`);
+  if (splitsLockedParty(selected)) warnings.push("This splits a checked-in party or group.");
+  if (!isValidLevelMatchup(teamA, teamB)) warnings.push("This breaks the level-matching rules.");
+  if (splitsLockedPairAcrossTeams(teamA, teamB)) warnings.push("This puts a locked pair on opposite teams.");
+  return { canAssign: true, warnings };
+}
+
+function confirmContinue(message) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "override-dialog-backdrop";
+    backdrop.innerHTML = `
+      <div class="override-dialog" role="dialog" aria-modal="true" aria-labelledby="override-title">
+        <strong id="override-title">Continue with this stack?</strong>
+        <p></p>
+        <div class="override-dialog-actions">
+          <button class="ghost-button override-cancel" type="button">Cancel</button>
+          <button class="primary-button override-continue" type="button">Continue</button>
+        </div>
+      </div>
+    `;
+    backdrop.querySelector("p").textContent = message;
+    document.body.append(backdrop);
+
+    const close = (answer) => {
+      backdrop.remove();
+      resolve(answer);
+    };
+    backdrop.querySelector(".override-cancel").addEventListener("click", () => close(false));
+    backdrop.querySelector(".override-continue").addEventListener("click", () => close(true));
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) close(false);
+    });
+    backdrop.querySelector(".override-continue").focus();
+  });
 }
 
 function autoFillCourts() {
@@ -521,7 +599,13 @@ function wouldCreateThirdSharedGame(players) {
 }
 
 function wouldExceedSharedStreakLimit(players) {
-  return pairCombinations(players).some(([a, b]) => !sameParty(a, b) && sharedStreak(a, b) >= MAX_NON_PARTY_SHARED_STREAK);
+  const limit = sharedStreakLimit();
+  return pairCombinations(players).some(([a, b]) => !sameParty(a, b) && sharedStreak(a, b) >= limit);
+}
+
+function sharedStreakLimit() {
+  const playerCount = Math.max(allSessionPlayers().length, 1);
+  return Math.min(4, Math.max(1, Math.ceil(36 / playerCount)));
 }
 
 function hasValidLevelPairing(players) {
@@ -623,9 +707,18 @@ function playerStrength(player) {
   return levelBase + stat.wins / stat.games;
 }
 
+function allSessionPlayers() {
+  return [
+    ...state.players,
+    ...state.sitouts,
+    ...state.removedPlayers,
+    ...state.courts.flatMap((court) => court.game?.players || [])
+  ];
+}
+
 function requeuePlayers(players) {
   players.forEach((player) => {
-    state.players.push({ ...player, checkedInAt: Date.now() });
+    state.players.push({ ...player, checkedInAt: Date.now(), sessionJoinedAt: player.sessionJoinedAt || player.checkedInAt || Date.now() });
   });
 }
 
@@ -644,6 +737,7 @@ function render() {
 
   renderQueue();
   renderSitouts();
+  renderRemovedPlayers();
   renderCourts();
   renderUpNext();
   renderCustomMatchOptions();
@@ -700,15 +794,7 @@ function renderCustomMatchOptions() {
 
   const selectedIds = playerSelects.map((select) => select.value).filter(Boolean);
   const hasDuplicates = new Set(selectedIds).size !== selectedIds.length;
-  const playersById = new Map(state.players.map((player) => [player.id, player]));
-  const selectedPlayers = selectedIds.map((id) => playersById.get(id)).filter(Boolean);
-  const repeatsTooMuch = selectedPlayers.length === 4 && wouldExceedSharedStreakLimit(selectedPlayers);
-  const splitsParty = selectedPlayers.length === 4 && splitsLockedParty(selectedPlayers);
-  const teamA = [els.teamA1.value, els.teamA2.value].map((id) => playersById.get(id)).filter(Boolean);
-  const teamB = [els.teamB1.value, els.teamB2.value].map((id) => playersById.get(id)).filter(Boolean);
-  const splitsPairAcrossTeams = teamA.length === 2 && teamB.length === 2 && splitsLockedPairAcrossTeams(teamA, teamB);
-  const invalidLevelMatchup = teamA.length === 2 && teamB.length === 2 && !isValidLevelMatchup(teamA, teamB);
-  els.customMatchForm.querySelector("button").disabled = openCourts.length === 0 || selectedIds.length !== 4 || hasDuplicates || repeatsTooMuch || splitsParty || splitsPairAcrossTeams || invalidLevelMatchup;
+  els.customMatchForm.querySelector("button").disabled = openCourts.length === 0 || selectedIds.length !== 4 || hasDuplicates;
 }
 
 function renderQueue() {
@@ -731,7 +817,7 @@ function renderQueue() {
       <span>${player.level}${player.partyId ? ` / ${player.partyLabel || "party"}` : ""}</span>
       <span>${games} GP</span>
       <span>Wait <span class="wait-timer" data-checked-in-at="${player.checkedInAt || Date.now()}">00:00</span></span>
-      <span>Checked in ${formatCheckInTime(player.checkedInAt)}</span>
+      <span>Time added to queue ${formatCheckInTime(player.sessionJoinedAt || player.checkedInAt)}</span>
     `;
     node.querySelector(".move-up").disabled = index === 0;
     node.querySelector(".move-down").disabled = index === state.players.length - 1;
@@ -807,6 +893,34 @@ function renderSitouts() {
   });
 }
 
+function renderRemovedPlayers() {
+  els.removedList.replaceChildren();
+
+  if (state.removedPlayers.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "No early outs yet.";
+    els.removedList.append(empty);
+    return;
+  }
+
+  state.removedPlayers.forEach((player) => {
+    const node = document.createElement("article");
+    node.className = "player-card early-out-card";
+    const stat = state.stats[player.id];
+    const games = stat?.games || 0;
+    node.innerHTML = `
+      <div>
+        <strong class="player-name"></strong>
+        <span class="player-meta"></span>
+      </div>
+    `;
+    node.querySelector(".player-name").textContent = player.name;
+    node.querySelector(".player-meta").textContent = `${player.level} / ${games} GP / Early out ${formatCheckInTime(player.earlyOutAt)}`;
+    els.removedList.append(node);
+  });
+}
+
 function renderCourts() {
   els.courtsGrid.replaceChildren();
 
@@ -864,10 +978,16 @@ function renderUpNext() {
         <span class="up-next-team team-b"></span>
       </span>
       <div class="up-next-editor" aria-label="Edit Stack ${index + 1}">
-        <label>Team A 1<select class="up-next-player" data-slot="a1"></select></label>
-        <label>Team A 2<select class="up-next-player" data-slot="a2"></select></label>
-        <label>Team B 1<select class="up-next-player" data-slot="b1"></select></label>
-        <label>Team B 2<select class="up-next-player" data-slot="b2"></select></label>
+        <div class="team-stack team-a-field">
+          <strong>Team A</strong>
+          <label>Team A 1<select class="up-next-player" data-slot="a1"></select></label>
+          <label>Team A 2<select class="up-next-player" data-slot="a2"></select></label>
+        </div>
+        <div class="team-stack team-b-field">
+          <strong>Team B</strong>
+          <label>Team B 1<select class="up-next-player" data-slot="b1"></select></label>
+          <label>Team B 2<select class="up-next-player" data-slot="b2"></select></label>
+        </div>
       </div>
       <div class="up-next-actions">
         <label>Court<select class="up-next-court"></select></label>
@@ -896,12 +1016,22 @@ function renderUpNext() {
       select.addEventListener("change", updatePreview);
     });
     updatePreview();
-    card.querySelector(".up-next-assign").addEventListener("click", () => {
+    card.querySelector(".up-next-assign").addEventListener("click", async () => {
       const playerSelects = card.querySelectorAll(".up-next-player");
       const values = [...playerSelects].map((select) => select.value);
-      const assigned = assignCustomMatch(card.querySelector(".up-next-court").value, values.slice(0, 2), values.slice(2, 4));
+      const courtId = card.querySelector(".up-next-court").value;
+      const teamAIds = values.slice(0, 2);
+      const teamBIds = values.slice(2, 4);
+      const validation = customStackWarnings(courtId, teamAIds, teamBIds);
+      if (!validation.canAssign) {
+        alert(validation.warnings[0]);
+        return;
+      }
+      const force = validation.warnings.length > 0 ? await confirmContinue(validation.warnings.join(" ")) : false;
+      if (validation.warnings.length > 0 && !force) return;
+      const assigned = assignCustomMatch(courtId, teamAIds, teamBIds, { force });
       if (!assigned) {
-        alert("That edited stack breaks the level rules, splits a checked-in party, or repeats non-party players beyond the session limit. Choose a different mix.");
+        alert("That edited stack could not be assigned. Check the court and player selections.");
       }
       render();
     });
@@ -1078,7 +1208,7 @@ function formatCheckInTime(timestamp) {
 function renderLeaderboard() {
   els.leaderboard.replaceChildren();
 
-  const rows = leaderboardRows();
+  const rows = leaderboardRows(false);
 
   if (rows.length === 0) {
     const empty = document.createElement("div");
@@ -1094,10 +1224,36 @@ function renderLeaderboard() {
   });
 }
 
-function leaderboardRows() {
-  return Object.values(state.stats)
-    .filter((stat) => stat.games > 0)
-    .sort((a, b) => b.wins / b.games - a.wins / a.games || b.games - a.games || a.name.localeCompare(b.name));
+function leaderboardRows(includeEarlyOut = false) {
+  const earlyOutIds = new Set(state.removedPlayers.map((player) => player.id));
+  const rowsById = new Map();
+
+  Object.entries(state.stats).forEach(([playerId, stat]) => {
+    if (stat.games > 0 || includeEarlyOut && earlyOutIds.has(playerId)) {
+      rowsById.set(playerId, { ...stat, id: playerId, earlyOut: earlyOutIds.has(playerId) });
+    }
+  });
+
+  if (includeEarlyOut) {
+    state.removedPlayers.forEach((player) => {
+      if (rowsById.has(player.id)) return;
+      rowsById.set(player.id, {
+        id: player.id,
+        name: player.name,
+        level: player.level,
+        games: 0,
+        wins: 0,
+        opponentStrengthTotal: 0,
+        earlyOut: true
+      });
+    });
+  }
+
+  return [...rowsById.values()].sort((a, b) => winRateValue(b) - winRateValue(a) || b.games - a.games || a.name.localeCompare(b.name));
+}
+
+function winRateValue(stat) {
+  return stat.games > 0 ? stat.wins / stat.games : 0;
 }
 
 function medalFor(index) {
@@ -1105,23 +1261,24 @@ function medalFor(index) {
 }
 
 function formatStanding(stat, index) {
-  const winRate = `${Math.round((stat.wins / stat.games) * 100)}%`;
-  const opponentStrength = (stat.opponentStrengthTotal / stat.games).toFixed(2);
-  return [`${medalFor(index)} ${stat.name}`, stat.games, stat.wins, winRate, opponentStrength];
+  const winRate = stat.games > 0 ? `${Math.round((stat.wins / stat.games) * 100)}%` : "0%";
+  const opponentStrength = stat.games > 0 ? (stat.opponentStrengthTotal / stat.games).toFixed(2) : "0.00";
+  return [`${medalFor(index)} ${stat.name}${stat.earlyOut ? " †" : ""}`, stat.games, stat.wins, winRate, opponentStrength];
 }
 
 function generateStandings() {
   state.finalStandings = {
     sessionName: state.settings.sessionName || "Pickleball Queue",
     generatedAt: Date.now(),
-    rows: leaderboardRows().map((stat, index) => ({
+    rows: leaderboardRows(true).map((stat, index) => ({
       rank: index + 1,
       medal: medalFor(index),
       name: stat.name,
+      earlyOut: Boolean(stat.earlyOut),
       games: stat.games,
       wins: stat.wins,
-      winRate: `${Math.round((stat.wins / stat.games) * 100)}%`,
-      opponentStrength: (stat.opponentStrengthTotal / stat.games).toFixed(2)
+      winRate: stat.games > 0 ? `${Math.round((stat.wins / stat.games) * 100)}%` : "0%",
+      opponentStrength: stat.games > 0 ? (stat.opponentStrengthTotal / stat.games).toFixed(2) : "0.00"
     }))
   };
 }
@@ -1141,8 +1298,14 @@ function renderStandings() {
   els.standingsHint.textContent = `${state.finalStandings.sessionName || "Pickleball Queue"} / Generated ${new Date(state.finalStandings.generatedAt).toLocaleString()}`;
   els.standingsBoard.append(leaderRow(["Player", "Games", "Wins", "Win Rate", "Avg Opp Str"], true));
   state.finalStandings.rows.forEach((row) => {
-    els.standingsBoard.append(leaderRow([`${row.medal} ${row.name}`, row.games, row.wins, row.winRate, row.opponentStrength]));
+    els.standingsBoard.append(leaderRow([`${row.medal} ${row.name}${row.earlyOut ? " †" : ""}`, row.games, row.wins, row.winRate, row.opponentStrength]));
   });
+  if (state.finalStandings.rows.some((row) => row.earlyOut)) {
+    const legend = document.createElement("div");
+    legend.className = "standing-legend";
+    legend.textContent = "† Early out / removed from queue before session end";
+    els.standingsBoard.append(legend);
+  }
 }
 
 function leaderRow(values, isHeader = false) {
@@ -1160,6 +1323,7 @@ function leaderRow(values, isHeader = false) {
 function resetSessionState() {
   state.players = [];
   state.sitouts = [];
+  state.removedPlayers = [];
   state.courts = [];
   state.settings = { courtCount: 4, preferSkill: true, sessionName: "Pickleball Queue" };
   state.stats = {};
@@ -1195,11 +1359,20 @@ els.preferSkill.addEventListener("change", () => {
   render();
 });
 
-els.customMatchForm.addEventListener("submit", (event) => {
+els.customMatchForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const assigned = assignCustomMatch(els.customCourt.value, [els.teamA1.value, els.teamA2.value], [els.teamB1.value, els.teamB2.value]);
+  const teamAIds = [els.teamA1.value, els.teamA2.value];
+  const teamBIds = [els.teamB1.value, els.teamB2.value];
+  const validation = customStackWarnings(els.customCourt.value, teamAIds, teamBIds);
+  if (!validation.canAssign) {
+    alert(validation.warnings[0]);
+    return;
+  }
+  const force = validation.warnings.length > 0 ? await confirmContinue(validation.warnings.join(" ")) : false;
+  if (validation.warnings.length > 0 && !force) return;
+  const assigned = assignCustomMatch(els.customCourt.value, teamAIds, teamBIds, { force });
   if (!assigned) {
-    alert("That stack breaks the level rules, splits a checked-in party, or repeats non-party players beyond the session limit. Choose a different mix.");
+    alert("That stack could not be assigned. Check the court and player selections.");
   }
   render();
 });

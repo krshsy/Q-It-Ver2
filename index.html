@@ -103,34 +103,32 @@
           </label>
 
           <div class="team-picker">
-            <label class="team-a-field">
-              Team A 1
-              <select id="teamA1"></select>
-            </label>
-            <label class="team-a-field">
-              Team A 2
-              <select id="teamA2"></select>
-            </label>
-            <label class="team-b-field">
-              Team B 1
-              <select id="teamB1"></select>
-            </label>
-            <label class="team-b-field">
-              Team B 2
-              <select id="teamB2"></select>
-            </label>
+            <div class="team-stack team-a-field">
+              <strong>Team A</strong>
+              <label>
+                Team A 1
+                <select id="teamA1"></select>
+              </label>
+              <label>
+                Team A 2
+                <select id="teamA2"></select>
+              </label>
+            </div>
+            <div class="team-stack team-b-field">
+              <strong>Team B</strong>
+              <label>
+                Team B 1
+                <select id="teamB1"></select>
+              </label>
+              <label>
+                Team B 2
+                <select id="teamB2"></select>
+              </label>
+            </div>
           </div>
 
           <button id="assignCustomBtn" class="primary-button" type="submit">Assign Custom Match</button>
         </form>
-
-        <section class="panel-mini" aria-labelledby="leaderboard-title">
-          <div class="section-title">
-            <h2 id="leaderboard-title">Leaderboard</h2>
-            <span class="muted">Win rate and opponent strength</span>
-          </div>
-          <div id="leaderboard" class="leaderboard compact-leaderboard"></div>
-        </section>
 
         <section class="panel-mini" aria-labelledby="match-log-title">
           <div class="section-title">
@@ -140,12 +138,28 @@
           <div id="matchLog" class="match-log"></div>
         </section>
 
+        <section class="panel-mini" aria-labelledby="leaderboard-title">
+          <div class="section-title">
+            <h2 id="leaderboard-title">Leaderboard</h2>
+            <span class="muted">Win rate and opponent strength</span>
+          </div>
+          <div id="leaderboard" class="leaderboard compact-leaderboard"></div>
+        </section>
+
         <section class="panel-mini" aria-labelledby="sitout-title">
           <div class="section-title">
             <h2 id="sitout-title">Sitting Out</h2>
             <span class="muted">Check back in when ready</span>
           </div>
           <div id="sitoutList" class="queue-list" aria-live="polite"></div>
+        </section>
+
+        <section class="panel-mini" aria-labelledby="removed-title">
+          <div class="section-title">
+            <h2 id="removed-title">Early Out</h2>
+            <span class="muted">Removed from queue</span>
+          </div>
+          <div id="removedList" class="queue-list" aria-live="polite"></div>
         </section>
       </section>
 

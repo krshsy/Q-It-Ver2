@@ -190,11 +190,29 @@ h3 {
   gap: 10px;
 }
 
+.team-stack {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.team-stack > strong {
+  font-size: 0.86rem;
+}
+
 .team-a-field {
   color: #12614d;
 }
 
 .team-b-field {
+  color: #214b88;
+}
+
+.team-a-field label {
+  color: #12614d;
+}
+
+.team-b-field label {
   color: #214b88;
 }
 
@@ -310,6 +328,40 @@ select:focus {
   background: #eef4f1;
   color: var(--court-dark);
   padding-inline: 7px;
+}
+
+.override-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(18, 26, 22, 0.38);
+  padding: 18px;
+}
+
+.override-dialog {
+  display: grid;
+  gap: 12px;
+  width: min(420px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 18px;
+  box-shadow: 0 24px 70px rgba(18, 26, 22, 0.22);
+}
+
+.override-dialog p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.override-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .status-strip {
@@ -585,6 +637,15 @@ select:focus {
   font-weight: 900;
 }
 
+.standing-legend {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.78rem;
+  padding: 7px 8px;
+}
+
 .match-log {
   display: grid;
   gap: 6px;
@@ -673,19 +734,32 @@ select:focus {
   color: #214b88;
 }
 
+.up-next-card .team-a-field > strong {
+  color: #12614d;
+}
+
+.up-next-card .team-b-field > strong {
+  color: #214b88;
+}
+
 .up-next-editor {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 10px;
 }
 
-.up-next-editor label,
 .up-next-actions label {
   display: grid;
   gap: 3px;
   color: var(--muted);
   font-size: 0.68rem;
   font-weight: 700;
+  text-transform: uppercase;
+}
+
+.up-next-editor label {
+  gap: 3px;
+  font-size: 0.68rem;
   text-transform: uppercase;
 }
 
