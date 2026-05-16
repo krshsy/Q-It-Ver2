@@ -63,6 +63,8 @@ const levelRank = {
 };
 
 const courtColors = ["#c8f1df", "#cfe0ff", "#f4d5ea", "#ffe1b8", "#dedcff", "#c9eef3", "#ffd1cd", "#dceec4"];
+const RECENT_FINISH_MS = 10 * 60 * 1000;
+
 function uid() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -405,6 +407,11 @@ function customStackWarnings(courtId, teamAIds, teamBIds) {
   const teamA = teamAIds.map((id) => playersById.get(id));
   const teamB = teamBIds.map((id) => playersById.get(id));
   const warnings = [];
+  selected
+    .filter((player) => player.lastFinishedAt && Date.now() - player.lastFinishedAt <= RECENT_FINISH_MS)
+    .forEach((player) => {
+      warnings.push(`${player.name} recently finished a game at ${formatGameTimestamp(player.lastFinishedAt)}.`);
+    });
   if (wouldExceedSharedStreakLimit(selected)) warnings.push(`Some players have already shared a stack ${sharedStreakLimit()} time(s) in a row.`);
   if (splitsLockedParty(selected)) warnings.push("This splits a checked-in party or group.");
   if (!isValidLevelMatchup(teamA, teamB)) warnings.push("This breaks the level-matching rules.");
@@ -466,9 +473,16 @@ function finishGame(courtId, requeueWinnersFirst = false, winnerSide = null) {
   rememberPartners(teamA);
   rememberPartners(teamB);
   rememberSharedMatchups([...teamA, ...teamB]);
+  markPlayersFinished([...teamA, ...teamB], Date.now());
   court.game = null;
   state.gamesRun += 1;
   requeuePlayers(returning);
+}
+
+function markPlayersFinished(players, finishedAt) {
+  players.forEach((player) => {
+    player.lastFinishedAt = finishedAt;
+  });
 }
 
 function addMatchLogEntry(court, teamA, teamB, winners) {
@@ -1205,6 +1219,15 @@ function formatCheckInTime(timestamp) {
   return new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function formatGameTimestamp(timestamp) {
+  return new Date(timestamp).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
 function renderLeaderboard() {
   els.leaderboard.replaceChildren();
 
@@ -1263,7 +1286,7 @@ function medalFor(index) {
 function formatStanding(stat, index) {
   const winRate = stat.games > 0 ? `${Math.round((stat.wins / stat.games) * 100)}%` : "0%";
   const opponentStrength = stat.games > 0 ? (stat.opponentStrengthTotal / stat.games).toFixed(2) : "0.00";
-  return [`${medalFor(index)} ${stat.name}${stat.earlyOut ? " †" : ""}`, stat.games, stat.wins, winRate, opponentStrength];
+  return [`${medalFor(index)} ${stat.name}${stat.earlyOut ? " [early out]" : ""}`, stat.games, stat.wins, winRate, opponentStrength];
 }
 
 function generateStandings() {
@@ -1298,12 +1321,12 @@ function renderStandings() {
   els.standingsHint.textContent = `${state.finalStandings.sessionName || "Pickleball Queue"} / Generated ${new Date(state.finalStandings.generatedAt).toLocaleString()}`;
   els.standingsBoard.append(leaderRow(["Player", "Games", "Wins", "Win Rate", "Avg Opp Str"], true));
   state.finalStandings.rows.forEach((row) => {
-    els.standingsBoard.append(leaderRow([`${row.medal} ${row.name}${row.earlyOut ? " †" : ""}`, row.games, row.wins, row.winRate, row.opponentStrength]));
+    els.standingsBoard.append(leaderRow([`${row.medal} ${row.name}${row.earlyOut ? " [early out]" : ""}`, row.games, row.wins, row.winRate, row.opponentStrength]));
   });
   if (state.finalStandings.rows.some((row) => row.earlyOut)) {
     const legend = document.createElement("div");
     legend.className = "standing-legend";
-    legend.textContent = "† Early out / removed from queue before session end";
+    legend.textContent = "[early out] removed from queue before session end";
     els.standingsBoard.append(legend);
   }
 }
